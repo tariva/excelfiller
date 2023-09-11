@@ -41,43 +41,51 @@ while (!startRow) {
 const workbook = XLSX.readFile(excelFileName);
 const worksheet = workbook.Sheets[workbook.SheetNames[0]];
 
-// Extract unique IDs from the ID column
-const uniqueIds = new Set();
+// Create a map to store rows associated with each ID
+const idRowMap = new Map();
+
+// Loop through the idColumn to gather unique IDs and their associated rows
 for (let i = startRow; ; i++) {
   const cellAddress = `${idColumn}${i}`;
   const cell = worksheet[cellAddress];
   if (!cell) break; // Reached the end of the data
-  uniqueIds.add(cell.v);
+
+  const idValue = cell.v;
+  if (!idRowMap.has(idValue)) {
+    idRowMap.set(idValue, []);
+  }
+  idRowMap.get(idValue).push(i);
 }
 
-// For each unique ID, gather the values from the data columns
-for (const id of uniqueIds) {
-  const rowsWithId = [];
-  const dataForColumns: any = {};
+// Process each unique ID
+for (const [id, rows] of idRowMap.entries()) {
+  const columnDataMap = new Map();
 
-  for (let i = startRow; ; i++) {
-    const cellAddress = `${idColumn}${i}`;
-    const cell = worksheet[cellAddress];
-    if (!cell) break; // Reached the end of the data
+  // Initialize columnDataMap with Sets
+  for (const col of dataColumns) {
+    columnDataMap.set(col, new Set());
+  }
 
-    if (cell.v === id) {
-      rowsWithId.push(i);
-      for (const dataColumn of dataColumns) {
-        if (!dataForColumns[dataColumn]) {
-          dataForColumns[dataColumn] = new Set();
-        }
-        const dataCell = worksheet[`${dataColumn}${i}`];
-        if (dataCell) dataForColumns[dataColumn].add(dataCell.v);
+  // Collect data from the dataColumns for each row this ID appears in
+  for (const row of rows) {
+    for (const col of dataColumns) {
+      const cell = worksheet[`${col}${row}`];
+      if (cell) {
+        columnDataMap.get(col).add(cell.v);
       }
     }
   }
 
-  // Update the data columns for rows with the same ID
-  for (const row of rowsWithId) {
-    for (const dataColumn of dataColumns) {
-      const uniqueValues = Array.from(dataForColumns[dataColumn]);
-      if (uniqueValues.length === 1) {
-        worksheet[`${dataColumn}${row}`].v = uniqueValues[0];
+  // Propagate data if unique for this ID
+  for (const col of dataColumns) {
+    const uniqueValues = Array.from(columnDataMap.get(col));
+    if (uniqueValues.length === 1) {
+      // Only one unique value for this ID
+      for (const row of rows) {
+        if (!worksheet[`${col}${row}`]) {
+          worksheet[`${col}${row}`] = {}; // Create cell if it doesn't exist
+        }
+        worksheet[`${col}${row}`].v = uniqueValues[0];
       }
     }
   }
